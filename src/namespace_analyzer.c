@@ -73,9 +73,11 @@ int namespace_list_process(pid_t pid, process_namespaces_t *proc_ns) {
         if (stat(ns_path, &st) == 0) {
             strncpy(proc_ns->namespaces[count].type, ns_types[i],
                    sizeof(proc_ns->namespaces[count].type) - 1);
+            proc_ns->namespaces[count].type[sizeof(proc_ns->namespaces[count].type) - 1] = '\0';
             proc_ns->namespaces[count].inode = st.st_ino;
             strncpy(proc_ns->namespaces[count].path, ns_path,
                    sizeof(proc_ns->namespaces[count].path) - 1);
+            proc_ns->namespaces[count].path[sizeof(proc_ns->namespaces[count].path) - 1] = '\0';
             count++;
         }
     }
