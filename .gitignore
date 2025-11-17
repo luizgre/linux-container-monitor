@@ -1,0 +1,41 @@
+# Build artifacts
+build/
+bin/
+*.o
+*.so
+*.a
+
+# Compiled binary
+resource-monitor
+
+# Test outputs
+*.csv
+*.json
+*.png
+
+# Valgrind reports
+valgrind-report.txt
+
+# Temporary files
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-*
+
+# OS files
+Thumbs.db
+
+# Test data
+/tmp/
+test_*.txt
