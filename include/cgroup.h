@@ -5,7 +5,7 @@
 #include <time.h>
 #include <sys/types.h>
 
-#define MAX_CGROUP_PATH 512
+#define MAX_CGROUP_PATH 1024
 #define MAX_CONTROLLER_NAME 64
 #define MAX_CGROUP_NAME 256
 

@@ -24,6 +24,10 @@ typedef struct {
     pid_t pid;
     uint64_t rss;          /* Resident Set Size in KB */
     uint64_t vsz;          /* Virtual Size in KB */
+    uint64_t shared;       /* Shared memory in KB */
+    uint64_t data;         /* Data segment in KB */
+    uint64_t stack;        /* Stack size in KB */
+    uint64_t text;         /* Text (code) segment in KB */
     uint64_t swap;         /* Swap usage in KB */
     uint64_t major_faults; /* Major page faults */
     uint64_t minor_faults; /* Minor page faults */
@@ -39,6 +43,7 @@ typedef struct {
     uint64_t syscw;        /* Write syscalls */
     uint64_t read_bytes;   /* Bytes actually read from storage */
     uint64_t write_bytes;  /* Bytes actually written to storage */
+    uint64_t cancelled_write_bytes; /* Cancelled write bytes */
     double read_rate;      /* Read rate in bytes/sec */
     double write_rate;     /* Write rate in bytes/sec */
     struct timespec timestamp;
@@ -46,6 +51,7 @@ typedef struct {
 
 /* Network metrics structure */
 typedef struct {
+    pid_t pid;
     char interface[32];
     uint64_t rx_bytes;
     uint64_t tx_bytes;
@@ -53,6 +59,8 @@ typedef struct {
     uint64_t tx_packets;
     uint64_t rx_errors;
     uint64_t tx_errors;
+    int tcp_connections;
+    int udp_connections;
     struct timespec timestamp;
 } network_metrics_t;
 
@@ -82,7 +90,7 @@ int io_monitor_calculate_rates(const io_metrics_t *prev,
 /* Network monitor functions */
 int network_monitor_init(void);
 void network_monitor_cleanup(void);
-int network_monitor_collect(const char *interface, network_metrics_t *metrics);
+int network_monitor_collect(pid_t pid, network_metrics_t *metrics);
 int network_monitor_list_interfaces(char interfaces[][32], int max_interfaces, int *count);
 
 /* Export functions */

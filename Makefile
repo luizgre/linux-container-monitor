@@ -3,7 +3,7 @@
 # Course: Operating Systems - RA3
 
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11 -D_GNU_SOURCE -I./include
+CFLAGS = -Wall -Wextra -Wno-format-truncation -Wno-stringop-truncation -std=c11 -D_GNU_SOURCE -I./include
 LDFLAGS = -lrt
 DEBUG_FLAGS = -g -O0
 RELEASE_FLAGS = -O2
