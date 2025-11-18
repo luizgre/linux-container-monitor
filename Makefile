@@ -73,7 +73,7 @@ $(BUILD_DIR)/%.o: $(TEST_DIR)/%.c $(HEADERS) | $(BUILD_DIR)
 # Link main executable
 $(TARGET): $(OBJECTS) | $(BIN_DIR)
 	@echo "Linking $@..."
-	$(CC) $(CFLAGS) $(RELEASE_FLAGS) $(OBJECTS) -o $@ $(LDFLAGS)
+	$(CC) $(CFLAGS) $(OBJECTS) -o $@ $(LDFLAGS)
 	@echo "Build successful! Binary: $@"
 
 # Debug build
