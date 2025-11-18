@@ -3,6 +3,7 @@
 #include "../include/cgroup.h"
 #include "../include/anomaly.h"
 #include "../include/web_dashboard.h"
+#include "../include/ncurses_ui.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,6 +45,8 @@ void print_usage(const char *program_name) {
     printf("  --anomaly-stats       Print anomaly detection statistics\n\n");
     printf("Web Dashboard Options:\n");
     printf("  --web PORT            Start web dashboard on PORT (default: 8080)\n\n");
+    printf("Display Options:\n");
+    printf("  --ui MODE             User interface mode: console, ncurses (default: console)\n\n");
     printf("General Options:\n");
     printf("  -h, --help            Show this help message\n");
     printf("  -v, --verbose         Enable verbose output\n\n");
@@ -243,6 +246,171 @@ int monitor_process(pid_t pid, int interval, int duration, const char *output_fi
     return 0;
 }
 
+int monitor_process_ncurses(pid_t pid, int interval, int duration,
+                           const char *metrics_type, int enable_anomaly) {
+    int monitor_cpu = (strcmp(metrics_type, "all") == 0 ||
+                      strcmp(metrics_type, "cpu") == 0);
+    int monitor_memory = (strcmp(metrics_type, "all") == 0 ||
+                         strcmp(metrics_type, "memory") == 0);
+    int monitor_io = (strcmp(metrics_type, "all") == 0 ||
+                     strcmp(metrics_type, "io") == 0);
+
+    /* Initialize ncurses UI */
+    if (ncurses_ui_init() != 0) {
+        fprintf(stderr, "Failed to initialize ncurses UI\n");
+        return -1;
+    }
+
+    /* Initialize anomaly detector */
+    anomaly_detector_t anomaly_detector;
+    if (enable_anomaly) {
+        if (anomaly_detector_init(&anomaly_detector, pid) != 0) {
+            ncurses_ui_cleanup();
+            fprintf(stderr, "Failed to initialize anomaly detector\n");
+            return -1;
+        }
+    }
+
+    cpu_metrics_t prev_cpu, curr_cpu, result_cpu;
+    memory_metrics_t memory;
+    io_metrics_t prev_io, curr_io, result_io;
+
+    /* Initialize monitors */
+    if (monitor_cpu) {
+        if (cpu_monitor_init() != 0) {
+            ncurses_ui_cleanup();
+            fprintf(stderr, "Failed to initialize CPU monitor\n");
+            return -1;
+        }
+        if (cpu_monitor_collect(pid, &prev_cpu) != 0) {
+            ncurses_ui_cleanup();
+            fprintf(stderr, "Failed to collect initial CPU metrics\n");
+            return -1;
+        }
+    }
+
+    if (monitor_memory) {
+        if (memory_monitor_init() != 0) {
+            ncurses_ui_cleanup();
+            fprintf(stderr, "Failed to initialize memory monitor\n");
+            return -1;
+        }
+    }
+
+    if (monitor_io) {
+        if (io_monitor_init() != 0) {
+            ncurses_ui_cleanup();
+            fprintf(stderr, "Failed to initialize I/O monitor\n");
+            return -1;
+        }
+        if (io_monitor_collect(pid, &prev_io) != 0) {
+            monitor_io = 0;
+        }
+    }
+
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
+
+    int elapsed = 0;
+    while (running && (duration == 0 || elapsed < duration)) {
+        /* Check for quit key */
+        if (ncurses_ui_check_quit()) {
+            running = 0;
+            break;
+        }
+
+        sleep(interval);
+        elapsed += interval;
+
+        /* Clear and draw header */
+        ncurses_ui_clear_metrics();
+        ncurses_ui_draw_header("Resource Monitor", pid, elapsed);
+
+        int line = 3;
+
+        /* Collect and display CPU metrics */
+        if (monitor_cpu) {
+            if (cpu_monitor_collect(pid, &curr_cpu) != 0) {
+                ncurses_ui_update_status("Process no longer exists");
+                sleep(2);
+                break;
+            }
+            cpu_monitor_calculate_percentage(&prev_cpu, &curr_cpu, &result_cpu);
+
+            if (enable_anomaly) {
+                anomaly_detector_update_cpu(&anomaly_detector, result_cpu.cpu_percent);
+            }
+
+            ncurses_ui_draw_cpu_metrics(&result_cpu, line);
+            line += 3;
+            prev_cpu = curr_cpu;
+        }
+
+        /* Collect and display memory metrics */
+        if (monitor_memory) {
+            if (memory_monitor_collect(pid, &memory) == 0) {
+                if (enable_anomaly) {
+                    anomaly_detector_update_memory(&anomaly_detector, (double)memory.rss);
+                }
+
+                ncurses_ui_draw_separator(line);
+                line++;
+                ncurses_ui_draw_memory_metrics(&memory, line);
+                line += 3;
+            }
+        }
+
+        /* Collect and display I/O metrics */
+        if (monitor_io) {
+            if (io_monitor_collect(pid, &curr_io) == 0) {
+                io_monitor_calculate_rates(&prev_io, &curr_io, &result_io);
+
+                if (enable_anomaly) {
+                    anomaly_detector_update_io(&anomaly_detector, result_io.read_rate, result_io.write_rate);
+                }
+
+                ncurses_ui_draw_separator(line);
+                line++;
+                ncurses_ui_draw_io_metrics(&result_io, line);
+                line += 3;
+                prev_io = curr_io;
+            }
+        }
+
+        /* Check for anomalies and display */
+        if (enable_anomaly) {
+            anomaly_event_t anomalies[10];
+            int anomaly_count = anomaly_detector_check(&anomaly_detector, anomalies, 10);
+
+            if (anomaly_count > 0) {
+                ncurses_ui_draw_separator(line);
+                line++;
+                for (int i = 0; i < anomaly_count && i < 3; i++) {
+                    ncurses_ui_draw_anomaly(&anomalies[i], line);
+                    line++;
+                }
+            }
+        }
+
+        ncurses_ui_update_status("Monitoring... (Press 'q' to quit)");
+        ncurses_ui_refresh();
+    }
+
+    /* Cleanup */
+    if (monitor_cpu) cpu_monitor_cleanup();
+    if (monitor_memory) memory_monitor_cleanup();
+    if (monitor_io) io_monitor_cleanup();
+
+    if (enable_anomaly) {
+        anomaly_detector_cleanup(&anomaly_detector);
+    }
+
+    ncurses_ui_cleanup();
+
+    printf("\nMonitoring completed.\n");
+    return 0;
+}
+
 #define MAX_MONITOR_PIDS 64
 
 int main(int argc, char *argv[]) {
@@ -264,6 +432,7 @@ int main(int argc, char *argv[]) {
     int enable_anomaly = 0;
     int show_anomaly_stats = 0;
     int web_port = 0;
+    char ui_mode[32] = "console";
 
     static struct option long_options[] = {
         {"pid",           required_argument, 0, 'p'},
@@ -280,6 +449,7 @@ int main(int argc, char *argv[]) {
         {"anomaly",       no_argument,       0, 'a'},
         {"anomaly-stats", no_argument,       0, 'A'},
         {"web",           required_argument, 0, 'w'},
+        {"ui",            required_argument, 0, 'u'},
         {"verbose",       no_argument,       0, 'v'},
         {"help",          no_argument,       0, 'h'},
         {0, 0, 0, 0}
@@ -346,6 +516,8 @@ int main(int argc, char *argv[]) {
             case 'w':
                 web_port = atoi(optarg);
                 if (web_port <= 0) web_port = WEB_DEFAULT_PORT;
+            case 'u':
+                strncpy(ui_mode, optarg, sizeof(ui_mode) - 1);
                 break;
             case 'v':
                 verbose = 1;
@@ -448,9 +620,16 @@ int main(int argc, char *argv[]) {
     /* Handle process monitoring */
     if (num_pids > 0) {
         if (num_pids == 1) {
-            /* Single process - use original function with anomaly detection */
-            return monitor_process(pids[0], interval, duration, output_file,
-                                 format, metrics_type, enable_anomaly, show_anomaly_stats);
+            /* Single process - check UI mode */
+            if (strcmp(ui_mode, "ncurses") == 0) {
+                /* Ncurses UI mode */
+                return monitor_process_ncurses(pids[0], interval, duration,
+                                              metrics_type, enable_anomaly);
+            } else {
+                /* Console mode with anomaly detection */
+                return monitor_process(pids[0], interval, duration, output_file,
+                                     format, metrics_type, enable_anomaly, show_anomaly_stats);
+            }
         } else {
             /* Multiple processes */
             printf("Monitoring %d processes (interval: %ds)\n", num_pids, interval);

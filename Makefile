@@ -4,7 +4,7 @@
 
 CC = gcc
 CFLAGS = -Wall -Wextra -Wno-format-truncation -Wno-stringop-truncation -std=c11 -D_GNU_SOURCE -I./include
-LDFLAGS = -lrt -lm
+LDFLAGS = -lrt -lm -lncurses
 DEBUG_FLAGS = -g -O0
 RELEASE_FLAGS = -O2
 
@@ -23,6 +23,7 @@ SOURCES = $(SRC_DIR)/cpu_monitor.c \
           $(SRC_DIR)/cgroup_manager.c \
           $(SRC_DIR)/anomaly_detector.c \
           $(SRC_DIR)/web_dashboard.c \
+          $(SRC_DIR)/ncurses_ui.c \
           $(SRC_DIR)/main.c
 
 # Object files
@@ -45,6 +46,7 @@ HEADERS = $(INC_DIR)/monitor.h \
           $(INC_DIR)/cgroup.h \
           $(INC_DIR)/anomaly.h \
           $(INC_DIR)/web_dashboard.h
+          $(INC_DIR)/ncurses_ui.h
 
 .PHONY: all clean debug release test valgrind install uninstall help
 
