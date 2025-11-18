@@ -1,6 +1,7 @@
 #include "../include/monitor.h"
 #include "../include/namespace.h"
 #include "../include/cgroup.h"
+#include "../include/anomaly.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,6 +38,9 @@ void print_usage(const char *program_name) {
     printf("  --cpu-limit CORES     Set CPU limit in cores (e.g., 0.5, 1.0)\n");
     printf("  --mem-limit MB        Set memory limit in MB\n");
     printf("  --move-to-cgroup PID  Move process to cgroup\n\n");
+    printf("Anomaly Detection Options:\n");
+    printf("  -a, --anomaly         Enable anomaly detection\n");
+    printf("  --anomaly-stats       Print anomaly detection statistics\n\n");
     printf("General Options:\n");
     printf("  -h, --help            Show this help message\n");
     printf("  -v, --verbose         Enable verbose output\n\n");
@@ -49,7 +53,7 @@ void print_usage(const char *program_name) {
 }
 
 int monitor_process(pid_t pid, int interval, int duration, const char *output_file,
-                   const char *format, const char *metrics_type) {
+                   const char *format, const char *metrics_type, int enable_anomaly, int show_anomaly_stats) {
     printf("Monitoring PID %d (interval: %ds, duration: %ds)\n",
            pid, interval, duration);
 
@@ -59,6 +63,17 @@ int monitor_process(pid_t pid, int interval, int duration, const char *output_fi
                          strcmp(metrics_type, "memory") == 0);
     int monitor_io = (strcmp(metrics_type, "all") == 0 ||
                      strcmp(metrics_type, "io") == 0);
+
+    /* Initialize anomaly detector */
+    anomaly_detector_t anomaly_detector;
+    if (enable_anomaly) {
+        if (anomaly_detector_init(&anomaly_detector, pid) == 0) {
+            printf("Anomaly detection enabled (threshold: %.1f sigma)\n", ANOMALY_THRESHOLD_SIGMA);
+        } else {
+            fprintf(stderr, "Warning: Failed to initialize anomaly detector\n");
+            enable_anomaly = 0;
+        }
+    }
 
     cpu_metrics_t prev_cpu, curr_cpu, result_cpu;
     memory_metrics_t memory;
@@ -116,6 +131,11 @@ int monitor_process(pid_t pid, int interval, int duration, const char *output_fi
             }
             cpu_monitor_calculate_percentage(&prev_cpu, &curr_cpu, &result_cpu);
 
+            /* Update anomaly detector */
+            if (enable_anomaly) {
+                anomaly_detector_update_cpu(&anomaly_detector, result_cpu.cpu_percent);
+            }
+
             if (is_csv && output_file) {
                 export_cpu_metrics_csv(&result_cpu, output_file, append);
                 append = 1;
@@ -134,6 +154,11 @@ int monitor_process(pid_t pid, int interval, int duration, const char *output_fi
         /* Collect memory metrics */
         if (monitor_memory) {
             if (memory_monitor_collect(pid, &memory) == 0) {
+                /* Update anomaly detector */
+                if (enable_anomaly) {
+                    anomaly_detector_update_memory(&anomaly_detector, (double)memory.rss);
+                }
+
                 if (is_csv && output_file) {
                     char mem_file[512];
                     snprintf(mem_file, sizeof(mem_file), "%s.memory.csv", output_file);
@@ -154,6 +179,11 @@ int monitor_process(pid_t pid, int interval, int duration, const char *output_fi
             if (io_monitor_collect(pid, &curr_io) == 0) {
                 io_monitor_calculate_rates(&prev_io, &curr_io, &result_io);
 
+                /* Update anomaly detector */
+                if (enable_anomaly) {
+                    anomaly_detector_update_io(&anomaly_detector, result_io.read_rate, result_io.write_rate);
+                }
+
                 if (is_csv && output_file) {
                     char io_file[512];
                     snprintf(io_file, sizeof(io_file), "%s.io.csv", output_file);
@@ -170,12 +200,41 @@ int monitor_process(pid_t pid, int interval, int duration, const char *output_fi
                 prev_io = curr_io;
             }
         }
+
+        /* Check for anomalies */
+        if (enable_anomaly) {
+            anomaly_event_t anomalies[10];
+            int anomaly_count = anomaly_detector_check(&anomaly_detector, anomalies, 10);
+
+            if (anomaly_count > 0) {
+                printf("\n");
+                for (int i = 0; i < anomaly_count; i++) {
+                    anomaly_print_event(&anomalies[i]);
+                }
+
+                /* Export anomalies to CSV if output file specified */
+                if (output_file[0] != '\0') {
+                    char anomaly_file[512];
+                    snprintf(anomaly_file, sizeof(anomaly_file), "%s.anomalies.csv", output_file);
+                    anomaly_export_csv(anomalies, anomaly_count, anomaly_file, elapsed > interval);
+                }
+            }
+        }
     }
 
     /* Cleanup */
     if (monitor_cpu) cpu_monitor_cleanup();
     if (monitor_memory) memory_monitor_cleanup();
     if (monitor_io) io_monitor_cleanup();
+
+    /* Print anomaly statistics if requested */
+    if (enable_anomaly && show_anomaly_stats) {
+        anomaly_print_stats(&anomaly_detector);
+    }
+
+    if (enable_anomaly) {
+        anomaly_detector_cleanup(&anomaly_detector);
+    }
 
     printf("\nMonitoring completed.\n");
     return 0;
@@ -196,6 +255,8 @@ int main(int argc, char *argv[]) {
     int measure_timing = 0;
     char cgroup_path[MAX_CGROUP_PATH] = "";
     int verbose __attribute__((unused)) = 0;
+    int enable_anomaly = 0;
+    int show_anomaly_stats = 0;
 
     static struct option long_options[] = {
         {"pid",           required_argument, 0, 'p'},
@@ -209,12 +270,14 @@ int main(int argc, char *argv[]) {
         {"report",        no_argument,       0, 'r'},
         {"timing",        no_argument,       0, 't'},
         {"cgroup",        required_argument, 0, 'g'},
+        {"anomaly",       no_argument,       0, 'a'},
+        {"anomaly-stats", no_argument,       0, 'A'},
         {"verbose",       no_argument,       0, 'v'},
         {"help",          no_argument,       0, 'h'},
         {0, 0, 0, 0}
     };
 
-    while ((opt = getopt_long(argc, argv, "p:i:d:o:f:m:l:c:rtg:vh",
+    while ((opt = getopt_long(argc, argv, "p:i:d:o:f:m:l:c:rtg:aAvh",
                              long_options, NULL)) != -1) {
         switch (opt) {
             case 'p':
@@ -253,6 +316,13 @@ int main(int argc, char *argv[]) {
                 break;
             case 'g':
                 strncpy(cgroup_path, optarg, sizeof(cgroup_path) - 1);
+                break;
+            case 'a':
+                enable_anomaly = 1;
+                break;
+            case 'A':
+                show_anomaly_stats = 1;
+                enable_anomaly = 1;  /* Automatically enable if showing stats */
                 break;
             case 'v':
                 verbose = 1;
@@ -337,7 +407,7 @@ int main(int argc, char *argv[]) {
     /* Handle process monitoring */
     if (pid > 0) {
         return monitor_process(pid, interval, duration, output_file,
-                             format, metrics_type);
+                             format, metrics_type, enable_anomaly, show_anomaly_stats);
     }
 
     /* No valid operation specified */
