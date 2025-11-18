@@ -4,7 +4,7 @@
 
 CC = gcc
 CFLAGS = -Wall -Wextra -Wno-format-truncation -Wno-stringop-truncation -std=c11 -D_GNU_SOURCE -I./include
-LDFLAGS = -lrt
+LDFLAGS = -lrt -lm
 DEBUG_FLAGS = -g -O0
 RELEASE_FLAGS = -O2
 
@@ -21,6 +21,7 @@ SOURCES = $(SRC_DIR)/cpu_monitor.c \
           $(SRC_DIR)/io_monitor.c \
           $(SRC_DIR)/namespace_analyzer.c \
           $(SRC_DIR)/cgroup_manager.c \
+          $(SRC_DIR)/anomaly_detector.c \
           $(SRC_DIR)/main.c
 
 # Object files
@@ -40,7 +41,8 @@ TEST_TARGET = $(BIN_DIR)/test-suite
 # Header dependencies
 HEADERS = $(INC_DIR)/monitor.h \
           $(INC_DIR)/namespace.h \
-          $(INC_DIR)/cgroup.h
+          $(INC_DIR)/cgroup.h \
+          $(INC_DIR)/anomaly.h
 
 .PHONY: all clean debug release test valgrind install uninstall help
 
