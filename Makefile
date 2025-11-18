@@ -45,7 +45,7 @@ HEADERS = $(INC_DIR)/monitor.h \
           $(INC_DIR)/namespace.h \
           $(INC_DIR)/cgroup.h \
           $(INC_DIR)/anomaly.h \
-          $(INC_DIR)/web_dashboard.h
+          $(INC_DIR)/web_dashboard.h \
           $(INC_DIR)/ncurses_ui.h
 
 .PHONY: all clean debug release test valgrind install uninstall help
