@@ -15,6 +15,7 @@ This project implements a professional-grade resource monitoring system with thr
 1. **Resource Profiler**: Collects detailed process metrics (CPU, Memory, I/O, Network)
 2. **Namespace Analyzer**: Analyzes and reports namespace isolation
 3. **Control Group Manager**: Analyzes and manipulates cgroups with resource limits
+4.  **Monitoring Interfaces**: Provides real-time UIs (Ncurses, Web) and anomaly detection.
 
 ## Features
 
@@ -44,6 +45,11 @@ This project implements a professional-grade resource monitoring system with thr
 - Generate utilization vs limits reports
 - Support for both cgroup v1 and v2
 
+### Monitoring & UI
+- **Anomaly Detection**: Real-time statistical anomaly detection (using moving average and standard deviation) for CPU, Memory, and I/O metrics.
+- **Ncurses UI**: A real-time terminal dashboard for monitoring a single process (activated with `--ui ncurses`).
+- **Web Dashboard**: A web-based interface for real-time metrics (activated with `--web PORT`).
+
 ## Requirements
 
 ### System Requirements
@@ -55,6 +61,8 @@ This project implements a professional-grade resource monitoring system with thr
 - GCC compiler with C11 support
 - GNU Make
 - Standard C library (glibc)
+- `libncurses` (for Ncurses UI)
+- `librt`, `libm`
 
 ### Optional Dependencies
 - Python 3.x (for visualization scripts)
@@ -141,6 +149,21 @@ sudo make install
 sudo ./bin/resource-monitor -g /test-cgroup
 ```
 
+### Ncurses UI
+
+```bash
+# Launch the real-time terminal dashboard
+./bin/resource-monitor -p 1234 --ui ncurses
+```
+
+### Web Dashboard
+
+```bash
+# Start the web dashboard on port 8080
+./bin/resource-monitor -p 1234 --web 8080
+# Now open http://localhost:8080 in your browser
+```
+
 ### Visualization
 
 ```bash
@@ -182,6 +205,16 @@ sudo ./bin/resource-monitor -g /test-cgroup
 - `--cpu-limit CORES` - Set CPU limit in cores (e.g., 0.5, 1.0)
 - `--mem-limit MB` - Set memory limit in MB
 
+### Anomaly Detection Options
+- `-a, --anomaly` - Enable anomaly detection
+- `--anomaly-stats` - Print anomaly detection statistics
+
+### Web Dashboard Options
+- `--web PORT` - Start web dashboard on PORT (default: 8080)
+
+### Display Options
+- `--ui MODE` - User interface mode: console, ncurses (default: console)
+
 ### General Options
 - `-h, --help` - Show help message
 - `-v, --verbose` - Enable verbose output
@@ -193,17 +226,24 @@ resource-monitor/
 ├── README.md              # This file
 ├── Makefile              # Build configuration
 ├── docs/
-│   └── ARCHITECTURE.md   # Architecture documentation
+│   ├── ARCHITECTURE.md   # Architecture documentation
+│   └── EXPERIMENTS.md    # Experiments documentation
 ├── include/
 │   ├── monitor.h         # Resource monitoring header
 │   ├── namespace.h       # Namespace analysis header
-│   └── cgroup.h          # Cgroup management header
+│   ├── cgroup.h          # Cgroup management header
+│   ├── anomaly.h         # Anomaly detection header
+│   ├── ncurses_ui.h      # Ncurses UI header
+│   └── web_dashboard.h   # Web dashboard header
 ├── src/
 │   ├── cpu_monitor.c     # CPU monitoring implementation
 │   ├── memory_monitor.c  # Memory monitoring implementation
 │   ├── io_monitor.c      # I/O monitoring implementation
 │   ├── namespace_analyzer.c  # Namespace analysis implementation
 │   ├── cgroup_manager.c  # Cgroup management implementation
+│   ├── anomaly_detector.c  # Anomaly detection implementation
+│   ├── ncurses_ui.c      # Ncurses UI implementation
+│   ├── web_dashboard.c   # Web dashboard implementation
 │   └── main.c            # Main program and CLI
 ├── tests/
 │   ├── test_cpu.c        # CPU monitor tests
@@ -327,7 +367,7 @@ gcc --version  # Should be 7.0 or higher
 ```bash
 # Install build essentials
 sudo apt-get update
-sudo apt-get install build-essential
+sudo apt-get install build-essential libncurses-dev
 
 # Install Python dependencies
 pip3 install matplotlib
@@ -340,15 +380,6 @@ The monitoring system is designed to have minimal overhead:
 - CPU overhead: < 1% for 1-second sampling interval
 - Memory footprint: ~2-5 MB
 - I/O impact: Minimal (reads small /proc files)
-
-## Future Enhancements
-
-- ncurses-based real-time dashboard
-- Web-based monitoring interface
-- Support for monitoring multiple processes simultaneously
-- Anomaly detection and alerting
-- Docker container integration
-- Extended network monitoring capabilities
 
 ## License
 
