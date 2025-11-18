@@ -516,6 +516,7 @@ int main(int argc, char *argv[]) {
             case 'w':
                 web_port = atoi(optarg);
                 if (web_port <= 0) web_port = WEB_DEFAULT_PORT;
+                break;
             case 'u':
                 strncpy(ui_mode, optarg, sizeof(ui_mode) - 1);
                 break;
