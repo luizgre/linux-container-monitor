@@ -2,6 +2,7 @@
 #include "../include/namespace.h"
 #include "../include/cgroup.h"
 #include "../include/anomaly.h"
+#include "../include/web_dashboard.h"
 #include "../include/ncurses_ui.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,6 +43,8 @@ void print_usage(const char *program_name) {
     printf("Anomaly Detection Options:\n");
     printf("  -a, --anomaly         Enable anomaly detection\n");
     printf("  --anomaly-stats       Print anomaly detection statistics\n\n");
+    printf("Web Dashboard Options:\n");
+    printf("  --web PORT            Start web dashboard on PORT (default: 8080)\n\n");
     printf("Display Options:\n");
     printf("  --ui MODE             User interface mode: console, ncurses (default: console)\n\n");
     printf("General Options:\n");
@@ -428,6 +431,7 @@ int main(int argc, char *argv[]) {
     int verbose __attribute__((unused)) = 0;
     int enable_anomaly = 0;
     int show_anomaly_stats = 0;
+    int web_port = 0;
     char ui_mode[32] = "console";
 
     static struct option long_options[] = {
@@ -444,6 +448,7 @@ int main(int argc, char *argv[]) {
         {"cgroup",        required_argument, 0, 'g'},
         {"anomaly",       no_argument,       0, 'a'},
         {"anomaly-stats", no_argument,       0, 'A'},
+        {"web",           required_argument, 0, 'w'},
         {"ui",            required_argument, 0, 'u'},
         {"verbose",       no_argument,       0, 'v'},
         {"help",          no_argument,       0, 'h'},
@@ -508,6 +513,9 @@ int main(int argc, char *argv[]) {
                 show_anomaly_stats = 1;
                 enable_anomaly = 1;  /* Automatically enable if showing stats */
                 break;
+            case 'w':
+                web_port = atoi(optarg);
+                if (web_port <= 0) web_port = WEB_DEFAULT_PORT;
             case 'u':
                 strncpy(ui_mode, optarg, sizeof(ui_mode) - 1);
                 break;
@@ -589,6 +597,24 @@ int main(int argc, char *argv[]) {
         }
         cgroup_cleanup();
         return 0;
+    }
+
+    /* Handle web dashboard */
+    if (web_port > 0) {
+        if (num_pids != 1) {
+            fprintf(stderr, "Error: Web dashboard requires exactly one PID (-p)\n");
+            return 1;
+        }
+
+        web_config_t web_config = {
+            .port = web_port,
+            .monitored_pid = pids[0],
+            .interval = interval,
+            .enable_anomaly = enable_anomaly,
+            .running = &running
+        };
+
+        return web_dashboard_start(&web_config);
     }
 
     /* Handle process monitoring */
