@@ -20,7 +20,7 @@ void print_usage(const char *program_name) {
     printf("Linux Container Resource Monitoring System\n\n");
     printf("Usage: %s [OPTIONS]\n\n", program_name);
     printf("Resource Profiler Options:\n");
-    printf("  -p, --pid PID         Monitor process with PID\n");
+    printf("  -p, --pid PID         Monitor process with PID (supports multiple: -p 1234,5678)\n");
     printf("  -i, --interval SEC    Sampling interval in seconds (default: 1)\n");
     printf("  -d, --duration SEC    Monitoring duration in seconds (default: infinite)\n");
     printf("  -o, --output FILE     Output file for metrics\n");
@@ -240,9 +240,12 @@ int monitor_process(pid_t pid, int interval, int duration, const char *output_fi
     return 0;
 }
 
+#define MAX_MONITOR_PIDS 64
+
 int main(int argc, char *argv[]) {
     int opt;
-    pid_t pid = 0;
+    pid_t pids[MAX_MONITOR_PIDS];
+    int num_pids = 0;
     int interval = 1;
     int duration = 0;
     char output_file[512] = "";
@@ -281,7 +284,18 @@ int main(int argc, char *argv[]) {
                              long_options, NULL)) != -1) {
         switch (opt) {
             case 'p':
-                pid = atoi(optarg);
+                /* Support comma-separated PIDs: -p 1234,5678,9012 */
+                {
+                    char *token;
+                    char *str = strdup(optarg);
+                    char *saveptr;
+                    token = strtok_r(str, ",", &saveptr);
+                    while (token != NULL && num_pids < MAX_MONITOR_PIDS) {
+                        pids[num_pids++] = atoi(token);
+                        token = strtok_r(NULL, ",", &saveptr);
+                    }
+                    free(str);
+                }
                 break;
             case 'i':
                 interval = atoi(optarg);
@@ -405,9 +419,54 @@ int main(int argc, char *argv[]) {
     }
 
     /* Handle process monitoring */
-    if (pid > 0) {
-        return monitor_process(pid, interval, duration, output_file,
-                             format, metrics_type, enable_anomaly, show_anomaly_stats);
+    if (num_pids > 0) {
+        if (num_pids == 1) {
+            /* Single process - use original function with anomaly detection */
+            return monitor_process(pids[0], interval, duration, output_file,
+                                 format, metrics_type, enable_anomaly, show_anomaly_stats);
+        } else {
+            /* Multiple processes */
+            printf("Monitoring %d processes (interval: %ds)\n", num_pids, interval);
+
+            signal(SIGINT, signal_handler);
+            signal(SIGTERM, signal_handler);
+
+            /* Initialize monitors */
+            cpu_monitor_init();
+            memory_monitor_init();
+            io_monitor_init();
+
+            int elapsed = 0;
+            while (running && (duration == 0 || elapsed < duration)) {
+                sleep(interval);
+                elapsed += interval;
+
+                printf("\n===== Sample at %ds =====\n", elapsed);
+
+                for (int i = 0; i < num_pids; i++) {
+                    printf("\n--- PID %d ---\n", pids[i]);
+
+                    cpu_metrics_t cpu;
+                    if (cpu_monitor_collect(pids[i], &cpu) == 0) {
+                        printf("CPU: %.2f%% | Threads: %ld\n",
+                               cpu.cpu_percent, cpu.num_threads);
+                    }
+
+                    memory_metrics_t mem;
+                    if (memory_monitor_collect(pids[i], &mem) == 0) {
+                        printf("Memory: RSS=%lu KB, VSZ=%lu KB\n",
+                               mem.rss, mem.vsz);
+                    }
+                }
+            }
+
+            cpu_monitor_cleanup();
+            memory_monitor_cleanup();
+            io_monitor_cleanup();
+
+            printf("\nMonitoring completed.\n");
+            return 0;
+        }
     }
 
     /* No valid operation specified */
