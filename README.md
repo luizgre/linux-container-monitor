@@ -4,7 +4,7 @@ A comprehensive monitoring and analysis system for Linux container resources, de
 
 ## Author
 
-**Luiz FG**
+**Luiz Felipe Greboge**
 Operating Systems Course - RA3 Assignment
 Individual Project
 
